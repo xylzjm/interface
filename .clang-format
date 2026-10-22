@@ -1,0 +1,22 @@
+# For more options, open this url: https://clang.llvm.net.cn/docs/ClangFormatStyleOptions.html
+---
+BasedOnStyle: Microsoft
+IndentWidth: 4
+UseTab: Never
+TabWidth: 4
+ColumnLimit: 0
+AccessModifierOffset: -4
+NamespaceIndentation: All
+FixNamespaceComments: false
+BreakBeforeBraces: Linux
+PointerAlignment: Left
+DerivePointerAlignment: false
+BinPackParameters: AlwaysOnePerLine
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: true
+IndentCaseLabels: true
+SortIncludes: false
+AlignConsecutiveMacros: AcrossEmptyLines
+AlignConsecutiveAssignments: Consecutive

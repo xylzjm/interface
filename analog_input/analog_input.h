@@ -83,10 +83,17 @@ typedef struct analog_input analog_input_t;
  * thermocouple_type is meaningful only when type is
  * ANALOG_INPUT_TYPE_THERMOCOUPLE. For other input types the implementation
  * normalizes it to ANALOG_INPUT_THERMOCOUPLE_TYPE_NONE.
+ *
+ * sample_rate_millihz is the requested ADC output data rate in integer
+ * millihertz (mHz), where 1 Hz equals 1000 mHz. For example, 2.5 Hz is
+ * represented as 2500 mHz. Zero requests the implementation's default rate.
+ * Non-zero supported values are implementation-specific and are documented in
+ * the concrete implementation's interface or implementation comments.
  */
 typedef struct {
     analog_input_type_t type;
     analog_input_thermocouple_type_t thermocouple_type;
+    uint32_t sample_rate_millihz;
 } analog_input_config_t;
 
 /**
@@ -98,10 +105,21 @@ typedef struct {
  * Break detection is currently unsupported for 4-20 mA and 0-10 V inputs.
  */
 typedef struct {
-    /** Select the input type and any type-specific sensor model. */
+    /**
+     * Select the input type, sensor model, and requested sample rate.
+     * Concrete implementations document their supported sample rates and
+     * return ANALOG_INPUT_ERR_UNSUPPORTED for unsupported non-zero values.
+     *
+     * On success, first_conversion_delay_ms receives the delay in milliseconds
+     * from the return of configure() until the first new conversion result is
+     * guaranteed to be available. Zero means no additional delay is required.
+     * Implementations round non-zero delays up to the next whole millisecond.
+     * The output is updated only after the configuration succeeds.
+     */
     analog_input_status_t (*configure)(
         analog_input_t* self,
-        const analog_input_config_t* config);
+        const analog_input_config_t* config,
+        uint32_t* first_conversion_delay_ms);
 
     /** Read one raw ADC sample without conversion or filtering. */
     analog_input_status_t (*read_sample)(
@@ -149,15 +167,27 @@ struct analog_input {
  * The object stores config only after the hardware operation succeeds.
  * For non-thermocouple input types, config->thermocouple_type is ignored and
  * the object caches ANALOG_INPUT_THERMOCOUPLE_TYPE_NONE instead.
+ * A zero sample rate requests the implementation's default rate. Concrete
+ * implementations validate non-zero sample rates against their documented
+ * supported values and return ANALOG_INPUT_ERR_UNSUPPORTED without changing
+ * the cached configuration when a value is not supported.
+ *
+ * first_conversion_delay_ms receives the delay in milliseconds before the first
+ * new conversion result is guaranteed to be available. The caller should use it
+ * to schedule the first read_sample() event rather than waiting inside the
+ * analog input interface. A zero value means read_sample() may be attempted
+ * immediately. Implementations round non-zero delays up to the next whole
+ * millisecond. The output is updated only after the configuration succeeds.
  */
 static inline analog_input_status_t analog_input_configure(
     analog_input_t* self,
-    const analog_input_config_t* config)
+    const analog_input_config_t* config,
+    uint32_t* first_conversion_delay_ms)
 {
     analog_input_status_t status;
     analog_input_config_t normalized;
 
-    if (self == NULL || config == NULL) {
+    if (self == NULL || config == NULL || first_conversion_delay_ms == NULL) {
         return ANALOG_INPUT_ERR_ARG;
     }
     normalized = *config;
@@ -193,7 +223,7 @@ static inline analog_input_status_t analog_input_configure(
         return ANALOG_INPUT_ERR_STATE;
     }
 
-    status = self->ops->configure(self, &normalized);
+    status = self->ops->configure(self, &normalized, first_conversion_delay_ms);
     if (status == ANALOG_INPUT_OK) {
         self->config = normalized;
     }
