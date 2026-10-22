@@ -8,7 +8,21 @@ ColumnLimit: 0
 AccessModifierOffset: -4
 NamespaceIndentation: All
 FixNamespaceComments: false
-BreakBeforeBraces: Linux
+# BreakBeforeBraces: Linux
+BreakBeforeBraces: Custom
+BraceWrapping:
+    AfterClass: false
+    AfterControlStatement: false
+    AfterEnum: false
+    AfterFunction: true
+    AfterNamespace: false
+    AfterStruct: false
+    AfterUnion: false
+    AfterExternBlock: false
+    BeforeCatch: true
+    BeforeElse: false
+    BeforeLambdaBody: false
+    IndentBraces: false
 PointerAlignment: Left
 DerivePointerAlignment: false
 BinPackParameters: AlwaysOnePerLine
