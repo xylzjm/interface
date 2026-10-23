@@ -99,7 +99,7 @@ typedef struct {
 /**
  * @brief Fixed operation table implemented by a concrete hardware driver.
  *
- * read_sample() returns one raw ADC code. convert() uses the current input
+ * read_sample() returns one raw sample code. convert() uses the current input
  * configuration and conversion context to produce an engineering value.
  * Break detection and measurement are independent hardware work modes.
  * Break detection is currently unsupported for 4-20 mA and 0-10 V inputs.
@@ -124,12 +124,12 @@ typedef struct {
     /** Read one raw ADC sample without conversion or filtering. */
     analog_input_status_t (*read_sample)(
         analog_input_t* self,
-        int32_t* adc_code);
+        int32_t* sample_code);
 
-    /** Convert one raw ADC code to an engineering value. */
+    /** Convert one raw sample code to an engineering value. */
     analog_input_status_t (*convert)(
         analog_input_t* self,
-        int32_t adc_code,
+        int32_t sample_code,
         const analog_input_conversion_context_t* context,
         float* measurement);
 
@@ -233,26 +233,26 @@ static inline analog_input_status_t analog_input_configure(
 /** Read one raw ADC sample without conversion or filtering. */
 static inline analog_input_status_t analog_input_read_sample(
     analog_input_t* self,
-    int32_t* adc_code)
+    int32_t* sample_code)
 {
-    if (self == NULL || adc_code == NULL) {
+    if (self == NULL || sample_code == NULL) {
         return ANALOG_INPUT_ERR_ARG;
     }
     if (self->ops == NULL || self->ops->read_sample == NULL) {
         return ANALOG_INPUT_ERR_STATE;
     }
-    return self->ops->read_sample(self, adc_code);
+    return self->ops->read_sample(self, sample_code);
 }
 
 /**
- * @brief Convert one raw ADC code to an engineering value.
+ * @brief Convert one raw sample code to an engineering value.
  *
  * The conversion uses the input configuration stored in self. context may be
  * NULL for input types that do not require additional conversion values.
  */
 static inline analog_input_status_t analog_input_convert(
     analog_input_t* self,
-    int32_t adc_code,
+    int32_t sample_code,
     const analog_input_conversion_context_t* context,
     float* measurement)
 {
@@ -262,7 +262,7 @@ static inline analog_input_status_t analog_input_convert(
     if (self->ops == NULL || self->ops->convert == NULL) {
         return ANALOG_INPUT_ERR_STATE;
     }
-    return self->ops->convert(self, adc_code, context, measurement);
+    return self->ops->convert(self, sample_code, context, measurement);
 }
 
 /** Enable the wire-break detection work mode. */
