@@ -73,6 +73,47 @@ typedef struct {
     float linear_max;    /**< Engineering value at the high input limit. */
 } analog_input_conversion_context_t;
 
+/* Sensor conversion helpers -------------------------------------------- */
+
+/**
+ * @brief Convert a PT100 resistance to temperature.
+ *
+ * The helper uses the Callendar-Van Dusen resistance-temperature model of
+ * IEC 60751 for a 100 ohm sensor. The input resistance is in ohms and the
+ * output temperature is in degrees Celsius. The quadratic form of the model is
+ * inverted analytically; below 0 degrees, where the cubic coefficient applies,
+ * the result is refined with a few Newton steps. Resistances outside the
+ * -200 .. +850 degrees range are rejected instead of being extrapolated.
+ */
+analog_input_status_t analog_input_pt100_resistance_to_temperature(
+    float resistance_ohm,
+    float* temperature_c);
+
+/**
+ * @brief Convert a thermocouple temperature to its thermoelectric voltage.
+ *
+ * The input temperature is in degrees Celsius and the output thermoelectric
+ * voltage is in millivolts. The function covers the sensor polynomial only;
+ * cold-junction compensation is composed by the caller using
+ * analog_input_thermocouple_mv_to_temperature().
+ */
+analog_input_status_t analog_input_thermocouple_temperature_to_mv(
+    analog_input_thermocouple_type_t type,
+    float temperature_c,
+    float* emf_mv);
+
+/**
+ * @brief Convert a thermocouple thermoelectric voltage to temperature.
+ *
+ * The input voltage is in millivolts and the output temperature is in degrees
+ * Celsius. The helper performs the inverse sensor conversion only; it does not
+ * perform cold-junction compensation.
+ */
+analog_input_status_t analog_input_thermocouple_mv_to_temperature(
+    analog_input_thermocouple_type_t type,
+    float emf_mv,
+    float* temperature_c);
+
 /* Interface object and operations --------------------------------------- */
 
 typedef struct analog_input analog_input_t;
