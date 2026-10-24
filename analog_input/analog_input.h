@@ -228,11 +228,11 @@ static inline analog_input_status_t analog_input_configure(
     analog_input_status_t status;
     analog_input_config_t normalized;
 
-    if (self == NULL || config == NULL || first_conversion_delay_ms == NULL) {
+    if ( self == NULL || config == NULL || first_conversion_delay_ms == NULL ) {
         return ANALOG_INPUT_ERR_ARG;
     }
     normalized = *config;
-    switch (config->type) {
+    switch ( config->type ) {
         case ANALOG_INPUT_TYPE_THERMOCOUPLE:
         case ANALOG_INPUT_TYPE_PT100:
         case ANALOG_INPUT_TYPE_4_20MA:
@@ -242,8 +242,8 @@ static inline analog_input_status_t analog_input_configure(
             return ANALOG_INPUT_ERR_ARG;
     }
 
-    if (normalized.type == ANALOG_INPUT_TYPE_THERMOCOUPLE) {
-        switch (normalized.thermocouple_type) {
+    if ( normalized.type == ANALOG_INPUT_TYPE_THERMOCOUPLE ) {
+        switch ( normalized.thermocouple_type ) {
             case ANALOG_INPUT_THERMOCOUPLE_TYPE_B:
             case ANALOG_INPUT_THERMOCOUPLE_TYPE_E:
             case ANALOG_INPUT_THERMOCOUPLE_TYPE_J:
@@ -260,12 +260,12 @@ static inline analog_input_status_t analog_input_configure(
         normalized.thermocouple_type = ANALOG_INPUT_THERMOCOUPLE_TYPE_NONE;
     }
 
-    if (self->ops == NULL || self->ops->configure == NULL) {
+    if ( self->ops == NULL || self->ops->configure == NULL ) {
         return ANALOG_INPUT_ERR_STATE;
     }
 
     status = self->ops->configure(self, &normalized, first_conversion_delay_ms);
-    if (status == ANALOG_INPUT_OK) {
+    if ( status == ANALOG_INPUT_OK ) {
         self->config = normalized;
     }
     return status;
@@ -276,10 +276,10 @@ static inline analog_input_status_t analog_input_read_sample(
     analog_input_t* self,
     int32_t* sample_code)
 {
-    if (self == NULL || sample_code == NULL) {
+    if ( self == NULL || sample_code == NULL ) {
         return ANALOG_INPUT_ERR_ARG;
     }
-    if (self->ops == NULL || self->ops->read_sample == NULL) {
+    if ( self->ops == NULL || self->ops->read_sample == NULL ) {
         return ANALOG_INPUT_ERR_STATE;
     }
     return self->ops->read_sample(self, sample_code);
@@ -297,10 +297,10 @@ static inline analog_input_status_t analog_input_convert(
     const analog_input_conversion_context_t* context,
     float* measurement)
 {
-    if (self == NULL || measurement == NULL) {
+    if ( self == NULL || measurement == NULL ) {
         return ANALOG_INPUT_ERR_ARG;
     }
-    if (self->ops == NULL || self->ops->convert == NULL) {
+    if ( self->ops == NULL || self->ops->convert == NULL ) {
         return ANALOG_INPUT_ERR_STATE;
     }
     return self->ops->convert(self, sample_code, context, measurement);
@@ -310,10 +310,10 @@ static inline analog_input_status_t analog_input_convert(
 static inline analog_input_status_t analog_input_enable_break_detection(
     analog_input_t* self)
 {
-    if (self == NULL) {
+    if ( self == NULL ) {
         return ANALOG_INPUT_ERR_ARG;
     }
-    if (self->ops == NULL || self->ops->enable_break_detection == NULL) {
+    if ( self->ops == NULL || self->ops->enable_break_detection == NULL ) {
         return ANALOG_INPUT_ERR_STATE;
     }
     return self->ops->enable_break_detection(self);
@@ -323,10 +323,10 @@ static inline analog_input_status_t analog_input_enable_break_detection(
 static inline analog_input_status_t analog_input_disable_break_detection(
     analog_input_t* self)
 {
-    if (self == NULL) {
+    if ( self == NULL ) {
         return ANALOG_INPUT_ERR_ARG;
     }
-    if (self->ops == NULL || self->ops->disable_break_detection == NULL) {
+    if ( self->ops == NULL || self->ops->disable_break_detection == NULL ) {
         return ANALOG_INPUT_ERR_STATE;
     }
     return self->ops->disable_break_detection(self);
@@ -337,10 +337,10 @@ static inline analog_input_status_t analog_input_check_wire_break(
     analog_input_t* self,
     analog_input_wire_status_t* wire_status)
 {
-    if (self == NULL || wire_status == NULL) {
+    if ( self == NULL || wire_status == NULL ) {
         return ANALOG_INPUT_ERR_ARG;
     }
-    if (self->ops == NULL || self->ops->check_wire_break == NULL) {
+    if ( self->ops == NULL || self->ops->check_wire_break == NULL ) {
         return ANALOG_INPUT_ERR_STATE;
     }
     return self->ops->check_wire_break(self, wire_status);
