@@ -6,8 +6,9 @@
  * @brief Hardware-independent analog input interface.
  *
  * A concrete implementation embeds analog_input_t as the first member of its
- * structure and supplies the operation table. The concrete state can be
- * recovered from the analog_input_t pointer because the base member is first.
+ * structure and installs the operation table with analog_input_ctor(). The
+ * concrete state can be recovered from the analog_input_t pointer because the
+ * base member is first.
  */
 
 #include <stddef.h>
@@ -156,6 +157,12 @@ typedef struct {
      * guaranteed to be available. Zero means no additional delay is required.
      * Implementations round non-zero delays up to the next whole millisecond.
      * The output is updated only after the configuration succeeds.
+     *
+     * The operation owns the cached configuration. Before returning success it
+     * stores the configuration that is now in effect into self->config, which
+     * may differ from the request where a default was resolved. When it fails,
+     * it must not leave self->config describing a device that was left in
+     * another state.
      */
     analog_input_status_t (*configure)(
         analog_input_t* self,
@@ -192,22 +199,63 @@ typedef struct {
  * @brief Base object inherited by concrete analog input implementations.
  *
  * Place this member first in the concrete structure. The cached input
- * configuration is updated by analog_input_configure() after the hardware
- * operation succeeds.
+ * configuration is maintained by the concrete implementation's configure()
+ * operation.
  */
 struct analog_input {
     const analog_input_ops_t* ops;
     analog_input_config_t config;
 };
 
+/* Construction ----------------------------------------------------------- */
+
+/**
+ * @brief Construct an analog input object.
+ *
+ * Installs the operation table and leaves the object without a configuration,
+ * so analog_input_configure() has to succeed before anything else is
+ * meaningful.
+ *
+ * The configuration left behind is one the interface itself rejects: type
+ * THERMOCOUPLE combined with thermocouple_type NONE. A concrete implementation
+ * can use that pair to recognise an object that was never configured, without
+ * keeping a separate flag.
+ *
+ * Returns ANALOG_INPUT_ERR_ARG when self or ops is NULL, or when any of the six
+ * operations is missing.
+ */
+static inline analog_input_status_t analog_input_ctor(
+    analog_input_t* self,
+    const analog_input_ops_t* ops)
+{
+    if ( self == NULL || ops == NULL
+         || ops->configure == NULL
+         || ops->read_sample == NULL
+         || ops->convert == NULL
+         || ops->enable_break_detection == NULL
+         || ops->disable_break_detection == NULL
+         || ops->check_wire_break == NULL ) {
+        return ANALOG_INPUT_ERR_ARG;
+    }
+
+    self->ops = ops;
+
+    /* Nothing has been configured yet, so the stored configuration is not a
+     * valid one and must not be trusted. */
+    self->config.type                = ANALOG_INPUT_TYPE_THERMOCOUPLE;
+    self->config.thermocouple_type   = ANALOG_INPUT_THERMOCOUPLE_TYPE_NONE;
+    self->config.sample_rate_millihz = 0U;
+    return ANALOG_INPUT_OK;
+}
+
 /* Application helpers --------------------------------------------------- */
 
 /**
  * @brief Select the input type and type-specific sensor model.
  *
- * The object stores config only after the hardware operation succeeds.
- * For non-thermocouple input types, config->thermocouple_type is ignored and
- * the object caches ANALOG_INPUT_THERMOCOUPLE_TYPE_NONE instead.
+ * The configuration is stored by the implementation, and only once its hardware
+ * operation succeeds. The request is passed on already normalized, so a
+ * non-thermocouple input always carries ANALOG_INPUT_THERMOCOUPLE_TYPE_NONE.
  * A zero sample rate requests the implementation's default rate. Concrete
  * implementations validate non-zero sample rates against their documented
  * supported values and return ANALOG_INPUT_ERR_UNSUPPORTED without changing
@@ -225,14 +273,13 @@ static inline analog_input_status_t analog_input_configure(
     const analog_input_config_t* config,
     uint32_t* first_conversion_delay_ms)
 {
-    analog_input_status_t status;
     analog_input_config_t normalized;
 
     if ( self == NULL || config == NULL || first_conversion_delay_ms == NULL ) {
         return ANALOG_INPUT_ERR_ARG;
     }
     normalized = *config;
-    switch ( config->type ) {
+    switch ( normalized.type ) {
         case ANALOG_INPUT_TYPE_THERMOCOUPLE:
         case ANALOG_INPUT_TYPE_PT100:
         case ANALOG_INPUT_TYPE_4_20MA:
@@ -264,11 +311,7 @@ static inline analog_input_status_t analog_input_configure(
         return ANALOG_INPUT_ERR_STATE;
     }
 
-    status = self->ops->configure(self, &normalized, first_conversion_delay_ms);
-    if ( status == ANALOG_INPUT_OK ) {
-        self->config = normalized;
-    }
-    return status;
+    return self->ops->configure(self, &normalized, first_conversion_delay_ms);
 }
 
 /** Read one raw ADC sample without conversion or filtering. */
