@@ -51,10 +51,22 @@ typedef enum {
     ANALOG_INPUT_THERMOCOUPLE_TYPE_T    = 7
 } analog_input_thermocouple_type_t;
 
-/** @brief Result of one wire-break check. */
+/**
+ * @brief Result of one wire-break check.
+ *
+ * ANALOG_INPUT_WIRE_BROKEN answers that the circuit is open without saying
+ * where, which is all a two-terminal sensor can tell.
+ * ANALOG_INPUT_WIRE_BROKEN_LEAD and ANALOG_INPUT_WIRE_BROKEN_RETURN split that
+ * answer for sensors whose leads can be told apart: the first is one of the
+ * leads that carry the excitation into the element, the second the lead both
+ * currents return through. An implementation reports the most specific value it
+ * can determine.
+ */
 typedef enum {
-    ANALOG_INPUT_WIRE_NORMAL = 0,
-    ANALOG_INPUT_WIRE_BROKEN = 1
+    ANALOG_INPUT_WIRE_NORMAL        = 0, /**< The circuit is closed. */
+    ANALOG_INPUT_WIRE_BROKEN        = 1, /**< Open, kind not identified. */
+    ANALOG_INPUT_WIRE_BROKEN_LEAD   = 2, /**< One excitation lead is open. */
+    ANALOG_INPUT_WIRE_BROKEN_RETURN = 3  /**< The shared return lead is open. */
 } analog_input_wire_status_t;
 
 /* Conversion data ------------------------------------------------------- */
@@ -143,8 +155,11 @@ typedef struct {
  *
  * read_sample() returns one raw sample code. convert() uses the current input
  * configuration and conversion context to produce an engineering value.
- * Break detection and measurement are independent hardware work modes.
- * Break detection is currently unsupported for 4-20 mA and 0-10 V inputs.
+ * Break detection and measurement are work modes of the same hardware, so they
+ * are never active at the same time: enabling detection leaves the measurement
+ * mode, and only disabling it again brings the measurement back. Detection is
+ * not defined for 4-20 mA and 0-10 V inputs, where an interrupted loop or an
+ * absent voltage looks like a valid low reading.
  */
 typedef struct {
     /**
@@ -181,15 +196,44 @@ typedef struct {
         const analog_input_conversion_context_t* context,
         float* measurement);
 
-    /** Enable the wire-break detection work mode. */
+    /**
+     * Enable the wire-break detection work mode.
+     *
+     * On success first_check_delay_ms receives the delay in milliseconds from
+     * the return of this call until check_wire_break() produces a meaningful
+     * result. Implementations round non-zero delays up to the next whole
+     * millisecond and update the output only after the mode was entered.
+     *
+     * While the mode is active the conversion no longer describes the input
+     * signal, so read_sample() and convert() must not be used. Returns
+     * ANALOG_INPUT_ERR_UNSUPPORTED for input types without a check and
+     * ANALOG_INPUT_ERR_STATE when no configuration is in effect.
+     */
     analog_input_status_t (*enable_break_detection)(
-        analog_input_t* self);
+        analog_input_t* self,
+        uint32_t* first_check_delay_ms);
 
-    /** Disable the wire-break detection work mode. */
+    /**
+     * Disable the wire-break detection work mode.
+     *
+     * Restores the configuration that configure() last accepted, so the object
+     * is back in the measurement mode it describes. On success
+     * first_conversion_delay_ms receives the delay in milliseconds from the
+     * return of this call until read_sample() produces a valid result, with the
+     * same meaning and rounding as the output of configure().
+     */
     analog_input_status_t (*disable_break_detection)(
-        analog_input_t* self);
+        analog_input_t* self,
+        uint32_t* first_conversion_delay_ms);
 
-    /** Run one wire-break check and return its result immediately. */
+    /**
+     * Run one wire-break check and return its result immediately.
+     *
+     * The result is meaningful once the delay of enable_break_detection() has
+     * elapsed. The function reads the converter once and does not wait.
+     * Implementations that can tell the faults apart report the specific value
+     * instead of ANALOG_INPUT_WIRE_BROKEN.
+     */
     analog_input_status_t (*check_wire_break)(
         analog_input_t* self,
         analog_input_wire_status_t* wire_status);
@@ -349,30 +393,45 @@ static inline analog_input_status_t analog_input_convert(
     return self->ops->convert(self, sample_code, context, measurement);
 }
 
-/** Enable the wire-break detection work mode. */
+/**
+ * @brief Switch to the wire-break detection work mode.
+ *
+ * first_check_delay_ms tells when the first check_wire_break() is meaningful, so
+ * the caller schedules it with its own timer instead of waiting inside the
+ * interface. A zero value means the check may run at once. The output is
+ * written only when the mode was entered.
+ */
 static inline analog_input_status_t analog_input_enable_break_detection(
-    analog_input_t* self)
+    analog_input_t* self,
+    uint32_t* first_check_delay_ms)
 {
-    if ( self == NULL ) {
+    if ( self == NULL || first_check_delay_ms == NULL ) {
         return ANALOG_INPUT_ERR_ARG;
     }
     if ( self->ops == NULL || self->ops->enable_break_detection == NULL ) {
         return ANALOG_INPUT_ERR_STATE;
     }
-    return self->ops->enable_break_detection(self);
+    return self->ops->enable_break_detection(self, first_check_delay_ms);
 }
 
-/** Disable the wire-break detection work mode. */
+/**
+ * @brief Return from the detection mode to the measurement mode.
+ *
+ * first_conversion_delay_ms receives the delay in milliseconds before
+ * read_sample() produces a valid result again, so the caller can schedule the
+ * next measurement event. The output is written only when the mode was left.
+ */
 static inline analog_input_status_t analog_input_disable_break_detection(
-    analog_input_t* self)
+    analog_input_t* self,
+    uint32_t* first_conversion_delay_ms)
 {
-    if ( self == NULL ) {
+    if ( self == NULL || first_conversion_delay_ms == NULL ) {
         return ANALOG_INPUT_ERR_ARG;
     }
     if ( self->ops == NULL || self->ops->disable_break_detection == NULL ) {
         return ANALOG_INPUT_ERR_STATE;
     }
-    return self->ops->disable_break_detection(self);
+    return self->ops->disable_break_detection(self, first_conversion_delay_ms);
 }
 
 /** Run one wire-break check and return its result immediately. */
