@@ -2,19 +2,15 @@
 
 #include <math.h>
 
-/* PT100 model ------------------------------------------------------------ */
+/*----------------------------------------------------------------------------*/
+/* PT100 model                                                                */
+/*----------------------------------------------------------------------------*/
 
-/*
- * Callendar-Van Dusen, IEC 60751:
- *
- *   R(T) = R0 * (1 + A*T + B*T^2)                   T >= 0
- *   R(T) = R0 * (1 + A*T + B*T^2 + C*(T-100)*T^3)   T <  0
- */
-
+/** @brief IEC 60751 Callendar-Van Dusen coefficients for a 100 ohm element. */
 #define PT100_R0_OHM (100.0f)
 #define PT100_A      (3.9083e-3f)
 #define PT100_B      (-5.775e-7f)
-#define PT100_C      (-4.183e-12f)
+#define PT100_C      (-4.183e-12f) /**< Below-zero cubic term. */
 
 static float pt100_r_of_t(float temperature_c)
 {
@@ -31,7 +27,7 @@ static float pt100_r_of_t(float temperature_c)
     return PT100_R0_OHM * resistance;
 }
 
-/** Slope of the Callendar-Van Dusen characteristic, in ohms per degree. */
+/** @brief Slope of the Callendar-Van Dusen characteristic, ohms per degree. */
 static float pt100_dr_dt(float temperature_c)
 {
     float temperature_squared;
@@ -84,37 +80,24 @@ analog_input_status_t analog_input_pt100_resistance_to_temperature(
     return ANALOG_INPUT_OK;
 }
 
-/* Thermocouple reference functions --------------------------------------- */
+/*----------------------------------------------------------------------------*/
+/* Thermocouple reference functions                                           */
+/*----------------------------------------------------------------------------*/
 
-/*
- * ITS-90 reference functions from NIST Monograph 175 ("Temperature-
- * Electromotive Force Reference Functions and Tables for the Letter-Designated
- * Thermocouple Types Based on the ITS-90").  Each range is
- *
- *     E(t90) = sum(c_i * t90^i) + a0 * exp(a1 * (t90 - a2)^2)
- *
- * with E in microvolts and t90 in degrees Celsius; the exponential term is
- * used by type K only.  All sets were checked against the fixed-point values
- * of the monograph (ice point, tin, silver, gold, ...) to better than
- * 0.1 microvolt.
- *
- * The polynomials are evaluated in single precision.  Above -200 C the result
- * stays within 0.1 C of the reference; below -240 C the cancellation between
- * the high order terms of types E and T costs a few degrees (about 3 C for
- * type T at -260 C).  Use double math there if cryogenic accuracy matters.
- */
+/* ITS-90 reference functions from NIST Monograph 175; coefficients are in
+ * microvolts and the exponential term is used by type K only. See README.md. */
 
 typedef struct {
     const float* coeffs; /**< c0..cn, microvolts. */
-    float low;           /**< Range limits in degrees Celsius. */
-    float high;
-    uint8_t count;     /**< Number of coefficients. */
-    uint8_t exp_index; /**< Index into tc_exp, 0xFF for none. */
+    float low;           /**< Lower range limit, in degrees Celsius. */
+    float high;          /**< Upper range limit, in degrees Celsius. */
+    uint8_t count;       /**< Number of coefficients. */
+    uint8_t exp_index;   /**< Index into tc_exp, 0xFF for none. */
 } tc_range_t;
 
 typedef struct {
-    const tc_range_t* ranges;
-    uint8_t range_count;
+    const tc_range_t* ranges; /**< Coefficient ranges covering the type's span. */
+    uint8_t range_count;      /**< Valid entries in ranges. */
 } tc_type_t;
 
 /* a0, a1, a2 of the exponential correction term. */
@@ -122,6 +105,7 @@ static const float tc_exp[][3] = {
     {118.5976f, -1.183432e-4f, 126.9686f}, /* type K, 0 .. 1372 C */
 };
 
+/** @brief exp_index value for a range with no exponential correction term. */
 #define TC_NO_EXP 0xFFU
 
 /* Type B, 0 .. 630.615 C and 630.615 .. 1820 C */
@@ -288,7 +272,7 @@ static const tc_range_t* tc_find_range(const tc_type_t* table,
     return NULL;
 }
 
-/** Exponential correction term of one range, in microvolts. */
+/** @brief Exponential correction term of one range, in microvolts. */
 static float tc_exp_term(const tc_range_t* range,
                          float temperature_c)
 {
@@ -305,7 +289,7 @@ static float tc_exp_term(const tc_range_t* range,
 
 /**
  * @brief Reference function of one thermocouple type, in microvolts.
- * @return Zero when the temperature is outside the type's range.
+ * @return 1 on success, 0 when the temperature is outside the type's range.
  */
 static uint8_t tc_emf_uv(const tc_type_t* table,
                          float temperature_c,
@@ -331,7 +315,7 @@ static uint8_t tc_emf_uv(const tc_type_t* table,
     return 1U;
 }
 
-/** @brief First derivative of the reference function, in microvolts per degree. */
+/** @brief First derivative of the reference function, microvolts per degree. */
 static uint8_t tc_slope_uv(const tc_type_t* table,
                            float temperature_c,
                            float* slope_uv)
@@ -365,16 +349,14 @@ static uint8_t tc_slope_uv(const tc_type_t* table,
     return 1U;
 }
 
-/** Newton iteration limit and convergence limit of the inverse function. */
+/** @brief Iteration limit and convergence tolerance of the inverse solver. */
 #define TC_MAX_ITERATIONS 12U
 #define TC_TOLERANCE_UV   0.01f
 
 /**
  * @brief Solve the reference function for the temperature.
  *
- * The reference functions are monotonic, so a bracketed Newton iteration
- * always converges; the bracket is also used to fall back to bisection when a
- * Newton step would leave the interval.
+ * Bracketed Newton iteration with bisection fallback; see README.md.
  */
 static uint8_t tc_solve(const tc_type_t* table,
                         float emf_uv,
@@ -429,7 +411,9 @@ static uint8_t tc_solve(const tc_type_t* table,
     return 1U;
 }
 
-/* Public conversion helpers ---------------------------------------------- */
+/*----------------------------------------------------------------------------*/
+/* Public conversion helpers                                                  */
+/*----------------------------------------------------------------------------*/
 
 analog_input_status_t analog_input_thermocouple_temperature_to_mv(
     analog_input_thermocouple_type_t type,
@@ -471,10 +455,9 @@ analog_input_status_t analog_input_thermocouple_mv_to_temperature(
         return ANALOG_INPUT_ERR_ARG;
     }
 
-    /* Type B is only usable above roughly 250 C: near ambient its output is a
-     * few microvolts on a flat curve, so input noise may be negative. Clamping
-     * to the ice point keeps the channel usable instead of flagging a
-     * conversion error on every reading. */
+    /* Type B is only usable above roughly 250 C; clamping a negative emf to
+     * the ice point keeps the channel usable instead of erroring on every
+     * reading. */
     if ( type == ANALOG_INPUT_THERMOCOUPLE_TYPE_B && emf_mv < 0.0f ) {
         emf_mv = 0.0f;
     }

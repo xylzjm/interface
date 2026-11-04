@@ -4,11 +4,6 @@
 /**
  * @file analog_input.h
  * @brief Hardware-independent analog input interface.
- *
- * A concrete implementation embeds analog_input_t as the first member of its
- * structure and installs the operation table with analog_input_ctor(). The
- * concrete state can be recovered from the analog_input_t pointer because the
- * base member is first.
  */
 
 #include <stddef.h>
@@ -18,7 +13,9 @@
 extern "C" {
 #endif
 
-/* Status and input types ------------------------------------------------- */
+/*----------------------------------------------------------------------------*/
+/* Status and input types                                                     */
+/*----------------------------------------------------------------------------*/
 
 /** @brief Common result codes returned by analog input operations. */
 typedef enum {
@@ -54,13 +51,9 @@ typedef enum {
 /**
  * @brief Result of one wire-break check.
  *
- * ANALOG_INPUT_WIRE_BROKEN answers that the circuit is open without saying
- * where, which is all a two-terminal sensor can tell.
- * ANALOG_INPUT_WIRE_BROKEN_LEAD and ANALOG_INPUT_WIRE_BROKEN_RETURN split that
- * answer for sensors whose leads can be told apart: the first is one of the
- * leads that carry the excitation into the element, the second the lead both
- * currents return through. An implementation reports the most specific value it
- * can determine.
+ * A two-terminal sensor can only report that the circuit is open; a sensor
+ * whose leads can be told apart reports which one. An implementation returns
+ * the most specific value it can determine.
  */
 typedef enum {
     ANALOG_INPUT_WIRE_NORMAL        = 0, /**< The circuit is closed. */
@@ -69,16 +62,15 @@ typedef enum {
     ANALOG_INPUT_WIRE_BROKEN_RETURN = 3  /**< The shared return lead is open. */
 } analog_input_wire_status_t;
 
-/* Conversion data ------------------------------------------------------- */
+/*----------------------------------------------------------------------------*/
+/* Conversion data                                                            */
+/*----------------------------------------------------------------------------*/
 
 /**
  * @brief Type-dependent values required by convert().
  *
- * cold_junction is the thermocouple cold-junction temperature in degrees
- * Celsius. linear_min and linear_max are engineering values corresponding to
- * the low and high input limits for 4-20 mA and 0-10 V inputs. Fields that are
- * irrelevant to the current input type are ignored. The pointer may be NULL
- * when the selected type needs no context.
+ * Fields that are irrelevant to the current input type are ignored, and the
+ * pointer may be NULL when the selected type needs no context.
  */
 typedef struct {
     float cold_junction; /**< Thermocouple cold-junction temperature. */
@@ -86,17 +78,20 @@ typedef struct {
     float linear_max;    /**< Engineering value at the high input limit. */
 } analog_input_conversion_context_t;
 
-/* Sensor conversion helpers -------------------------------------------- */
+/*----------------------------------------------------------------------------*/
+/* Sensor conversion helpers                                                  */
+/*----------------------------------------------------------------------------*/
 
 /**
- * @brief Convert a PT100 resistance to temperature.
+ * @brief Convert a PT100 resistance to a temperature.
  *
- * The helper uses the Callendar-Van Dusen resistance-temperature model of
- * IEC 60751 for a 100 ohm sensor. The input resistance is in ohms and the
- * output temperature is in degrees Celsius. The quadratic form of the model is
- * inverted analytically; below 0 degrees, where the cubic coefficient applies,
- * the result is refined with a few Newton steps. Resistances outside the
- * -200 .. +850 degrees range are rejected instead of being extrapolated.
+ * @param resistance_ohm Sensor resistance in ohms.
+ * @param temperature_c Receives the temperature in degrees Celsius.
+ * @return ANALOG_INPUT_OK, ANALOG_INPUT_ERR_ARG for a NULL pointer, a NaN or a
+ *         non-positive resistance, or ANALOG_INPUT_ERR_CONVERSION when the
+ *         resistance is outside the -200 .. +850 degrees Celsius range.
+ * @note IEC 60751 Callendar-Van Dusen for a 100 ohm element; the model and its
+ *       inversion are described in README.md.
  */
 analog_input_status_t analog_input_pt100_resistance_to_temperature(
     float resistance_ohm,
@@ -105,10 +100,15 @@ analog_input_status_t analog_input_pt100_resistance_to_temperature(
 /**
  * @brief Convert a thermocouple temperature to its thermoelectric voltage.
  *
- * The input temperature is in degrees Celsius and the output thermoelectric
- * voltage is in millivolts. The function covers the sensor polynomial only;
- * cold-junction compensation is composed by the caller using
- * analog_input_thermocouple_mv_to_temperature().
+ * @param type Thermocouple model.
+ * @param temperature_c Junction temperature in degrees Celsius.
+ * @param emf_mv Receives the thermoelectric voltage in millivolts.
+ * @return ANALOG_INPUT_OK, ANALOG_INPUT_ERR_ARG for a NULL pointer, a NaN or an
+ *         unknown type, or ANALOG_INPUT_ERR_CONVERSION when the temperature is
+ *         outside the type's range.
+ * @note Covers the sensor polynomial only; cold-junction compensation is
+ *       composed by the caller with
+ *       analog_input_thermocouple_mv_to_temperature().
  */
 analog_input_status_t analog_input_thermocouple_temperature_to_mv(
     analog_input_thermocouple_type_t type,
@@ -116,45 +116,43 @@ analog_input_status_t analog_input_thermocouple_temperature_to_mv(
     float* emf_mv);
 
 /**
- * @brief Convert a thermocouple thermoelectric voltage to temperature.
+ * @brief Convert a thermocouple thermoelectric voltage to a temperature.
  *
- * The input voltage is in millivolts and the output temperature is in degrees
- * Celsius. The helper performs the inverse sensor conversion only; it does not
- * perform cold-junction compensation.
+ * @param type Thermocouple model.
+ * @param emf_mv Thermoelectric voltage in millivolts.
+ * @param temperature_c Receives the temperature in degrees Celsius.
+ * @return ANALOG_INPUT_OK, ANALOG_INPUT_ERR_ARG for a NULL pointer, a NaN or an
+ *         unknown type, or ANALOG_INPUT_ERR_CONVERSION when the voltage is
+ *         outside the type's range.
+ * @note Performs the inverse sensor conversion only; it does not perform
+ *       cold-junction compensation. Type B is clamped to the ice point below
+ *       zero emf; see README.md.
  */
 analog_input_status_t analog_input_thermocouple_mv_to_temperature(
     analog_input_thermocouple_type_t type,
     float emf_mv,
     float* temperature_c);
 
-/* Interface object and operations --------------------------------------- */
+/*----------------------------------------------------------------------------*/
+/* Interface object and operations                                            */
+/*----------------------------------------------------------------------------*/
 
 typedef struct analog_input analog_input_t;
 
 /**
  * @brief Input configuration stored by the analog input object.
  *
- * thermocouple_type is meaningful only when type is
- * ANALOG_INPUT_TYPE_THERMOCOUPLE. For other input types the implementation
- * normalizes it to ANALOG_INPUT_THERMOCOUPLE_TYPE_NONE.
- *
- * sample_rate_millihz is the requested ADC output data rate in integer
- * millihertz (mHz), where 1 Hz equals 1000 mHz. For example, 2.5 Hz is
- * represented as 2500 mHz. Zero requests the implementation's default rate.
- * Non-zero supported values are implementation-specific and are documented in
- * the concrete implementation's interface or implementation comments.
+ * The supported non-zero sample rates are implementation-specific.
  */
 typedef struct {
-    analog_input_type_t type;
-    analog_input_thermocouple_type_t thermocouple_type;
-    uint32_t sample_rate_millihz;
+    analog_input_type_t type;                           /**< Input category; selects the conversion model. */
+    analog_input_thermocouple_type_t thermocouple_type; /**< Thermocouple model; NONE unless type is THERMOCOUPLE. */
+    uint32_t sample_rate_millihz;                       /**< Requested ADC output rate in mHz (1 Hz = 1000 mHz); 0 selects the default. */
 } analog_input_config_t;
 
 /**
  * @brief Fixed operation table implemented by a concrete hardware driver.
  *
- * read_sample() returns one raw sample code. convert() uses the current input
- * configuration and conversion context to produce an engineering value.
  * Break detection and measurement are work modes of the same hardware, so they
  * are never active at the same time: enabling detection leaves the measurement
  * mode, and only disabling it again brings the measurement back. Detection is
@@ -162,78 +160,35 @@ typedef struct {
  * absent voltage looks like a valid low reading.
  */
 typedef struct {
-    /**
-     * Select the input type, sensor model, and requested sample rate.
-     * Concrete implementations document their supported sample rates and
-     * return ANALOG_INPUT_ERR_UNSUPPORTED for unsupported non-zero values.
-     *
-     * On success, first_conversion_delay_ms receives the delay in milliseconds
-     * from the return of configure() until the first new conversion result is
-     * guaranteed to be available. Zero means no additional delay is required.
-     * Implementations round non-zero delays up to the next whole millisecond.
-     * The output is updated only after the configuration succeeds.
-     *
-     * The operation owns the cached configuration. Before returning success it
-     * stores the configuration that is now in effect into self->config, which
-     * may differ from the request where a default was resolved. When it fails,
-     * it must not leave self->config describing a device that was left in
-     * another state.
-     */
+    /** @brief Select the input type, sensor model and requested sample rate. */
     analog_input_status_t (*configure)(
         analog_input_t* self,
         const analog_input_config_t* config,
         uint32_t* first_conversion_delay_ms);
 
-    /** Read one raw ADC sample without conversion or filtering. */
+    /** @brief Read one raw ADC sample without conversion or filtering. */
     analog_input_status_t (*read_sample)(
         analog_input_t* self,
         int32_t* sample_code);
 
-    /** Convert one raw sample code to an engineering value. */
+    /** @brief Produce an engineering value from one raw sample code. */
     analog_input_status_t (*convert)(
         analog_input_t* self,
         int32_t sample_code,
         const analog_input_conversion_context_t* context,
         float* measurement);
 
-    /**
-     * Enable the wire-break detection work mode.
-     *
-     * On success first_check_delay_ms receives the delay in milliseconds from
-     * the return of this call until check_wire_break() produces a meaningful
-     * result. Implementations round non-zero delays up to the next whole
-     * millisecond and update the output only after the mode was entered.
-     *
-     * While the mode is active the conversion no longer describes the input
-     * signal, so read_sample() and convert() must not be used. Returns
-     * ANALOG_INPUT_ERR_UNSUPPORTED for input types without a check and
-     * ANALOG_INPUT_ERR_STATE when no configuration is in effect.
-     */
+    /** @brief Enter the wire-break detection work mode. */
     analog_input_status_t (*enable_break_detection)(
         analog_input_t* self,
         uint32_t* first_check_delay_ms);
 
-    /**
-     * Disable the wire-break detection work mode.
-     *
-     * Restores the configuration that configure() last accepted, so the object
-     * is back in the measurement mode it describes. On success
-     * first_conversion_delay_ms receives the delay in milliseconds from the
-     * return of this call until read_sample() produces a valid result, with the
-     * same meaning and rounding as the output of configure().
-     */
+    /** @brief Leave the detection mode and restore the measurement mode. */
     analog_input_status_t (*disable_break_detection)(
         analog_input_t* self,
         uint32_t* first_conversion_delay_ms);
 
-    /**
-     * Run one wire-break check and return its result immediately.
-     *
-     * The result is meaningful once the delay of enable_break_detection() has
-     * elapsed. The function reads the converter once and does not wait.
-     * Implementations that can tell the faults apart report the specific value
-     * instead of ANALOG_INPUT_WIRE_BROKEN.
-     */
+    /** @brief Report the current wire state without waiting. */
     analog_input_status_t (*check_wire_break)(
         analog_input_t* self,
         analog_input_wire_status_t* wire_status);
@@ -242,31 +197,31 @@ typedef struct {
 /**
  * @brief Base object inherited by concrete analog input implementations.
  *
- * Place this member first in the concrete structure. The cached input
- * configuration is maintained by the concrete implementation's configure()
- * operation.
+ * Place this member first in the concrete structure, so the concrete state can
+ * be recovered from the analog_input_t pointer.
  */
 struct analog_input {
-    const analog_input_ops_t* ops;
-    analog_input_config_t config;
+    const analog_input_ops_t* ops; /**< Operation table, installed by analog_input_ctor(). */
+    analog_input_config_t config;  /**< Cached configuration, written by the implementation's configure(). */
 };
 
-/* Construction ----------------------------------------------------------- */
+/*----------------------------------------------------------------------------*/
+/* Construction                                                               */
+/*----------------------------------------------------------------------------*/
 
 /**
  * @brief Construct an analog input object.
  *
- * Installs the operation table and leaves the object without a configuration,
- * so analog_input_configure() has to succeed before anything else is
- * meaningful.
- *
- * The configuration left behind is one the interface itself rejects: type
- * THERMOCOUPLE combined with thermocouple_type NONE. A concrete implementation
- * can use that pair to recognise an object that was never configured, without
- * keeping a separate flag.
- *
- * Returns ANALOG_INPUT_ERR_ARG when self or ops is NULL, or when any of the six
- * operations is missing.
+ * @param self Storage owned by the caller.
+ * @param ops Operation table with all six operations present.
+ * @return ANALOG_INPUT_OK, or ANALOG_INPUT_ERR_ARG when self or ops is NULL or
+ *         when any of the six operations is missing.
+ * @note Leaves the object unconfigured, so analog_input_configure() has to
+ *       succeed before anything else is meaningful.
+ * @note The configuration left behind is one the interface itself rejects
+ *       (THERMOCOUPLE with thermocouple_type NONE), so a concrete
+ *       implementation can recognise an object that was never configured
+ *       without keeping a separate flag.
  */
 static inline analog_input_status_t analog_input_ctor(
     analog_input_t* self,
@@ -292,25 +247,29 @@ static inline analog_input_status_t analog_input_ctor(
     return ANALOG_INPUT_OK;
 }
 
-/* Application helpers --------------------------------------------------- */
+/*----------------------------------------------------------------------------*/
+/* Application helpers                                                        */
+/*----------------------------------------------------------------------------*/
 
 /**
  * @brief Select the input type and type-specific sensor model.
  *
- * The configuration is stored by the implementation, and only once its hardware
- * operation succeeds. The request is passed on already normalized, so a
- * non-thermocouple input always carries ANALOG_INPUT_THERMOCOUPLE_TYPE_NONE.
- * A zero sample rate requests the implementation's default rate. Concrete
- * implementations validate non-zero sample rates against their documented
- * supported values and return ANALOG_INPUT_ERR_UNSUPPORTED without changing
- * the cached configuration when a value is not supported.
- *
- * first_conversion_delay_ms receives the delay in milliseconds before the first
- * new conversion result is guaranteed to be available. The caller should use it
- * to schedule the first read_sample() event rather than waiting inside the
- * analog input interface. A zero value means read_sample() may be attempted
- * immediately. Implementations round non-zero delays up to the next whole
- * millisecond. The output is updated only after the configuration succeeds.
+ * @param self Analog input object.
+ * @param config Requested configuration.
+ * @param first_conversion_delay_ms Receives the delay in milliseconds before
+ *        the first new conversion result is guaranteed to be available; zero
+ *        means read_sample() may be attempted immediately.
+ * @return ANALOG_INPUT_OK, ANALOG_INPUT_ERR_ARG for a NULL pointer, an unknown
+ *         type or model, ANALOG_INPUT_ERR_STATE when the object has no
+ *         operation table, or ANALOG_INPUT_ERR_UNSUPPORTED for a sample rate
+ *         the implementation does not offer.
+ * @note The request is normalized first: a non-thermocouple input always
+ *       carries ANALOG_INPUT_THERMOCOUPLE_TYPE_NONE, and a zero sample rate
+ *       asks for the implementation's default rate.
+ * @note Schedule the first read_sample() event from the returned delay instead
+ *       of waiting inside the interface. Non-zero delays round up to the next
+ *       whole millisecond, and the output is written only after the
+ *       configuration succeeds.
  */
 static inline analog_input_status_t analog_input_configure(
     analog_input_t* self,
@@ -358,7 +317,14 @@ static inline analog_input_status_t analog_input_configure(
     return self->ops->configure(self, &normalized, first_conversion_delay_ms);
 }
 
-/** Read one raw ADC sample without conversion or filtering. */
+/**
+ * @brief Read one raw ADC sample.
+ *
+ * @param self Analog input object.
+ * @param sample_code Receives the raw ADC code.
+ * @return ANALOG_INPUT_OK, ANALOG_INPUT_ERR_ARG for a NULL pointer, or
+ *         ANALOG_INPUT_ERR_STATE when the object has no operation table.
+ */
 static inline analog_input_status_t analog_input_read_sample(
     analog_input_t* self,
     int32_t* sample_code)
@@ -375,8 +341,14 @@ static inline analog_input_status_t analog_input_read_sample(
 /**
  * @brief Convert one raw sample code to an engineering value.
  *
- * The conversion uses the input configuration stored in self. context may be
- * NULL for input types that do not require additional conversion values.
+ * @param self Analog input object.
+ * @param sample_code Raw code from analog_input_read_sample().
+ * @param context Type-dependent values; may be NULL when the selected type
+ *        needs none.
+ * @param measurement Receives the engineering value.
+ * @return ANALOG_INPUT_OK, ANALOG_INPUT_ERR_ARG for a NULL pointer, or
+ *         ANALOG_INPUT_ERR_STATE when the object has no operation table.
+ * @note Uses the input configuration stored in self.
  */
 static inline analog_input_status_t analog_input_convert(
     analog_input_t* self,
@@ -396,10 +368,17 @@ static inline analog_input_status_t analog_input_convert(
 /**
  * @brief Switch to the wire-break detection work mode.
  *
- * first_check_delay_ms tells when the first check_wire_break() is meaningful, so
- * the caller schedules it with its own timer instead of waiting inside the
- * interface. A zero value means the check may run at once. The output is
- * written only when the mode was entered.
+ * @param self Analog input object.
+ * @param first_check_delay_ms Receives the delay in milliseconds before
+ *        check_wire_break() produces a meaningful result; zero means the check
+ *        may run at once.
+ * @return ANALOG_INPUT_OK, ANALOG_INPUT_ERR_ARG for a NULL pointer,
+ *         ANALOG_INPUT_ERR_STATE when no configuration is in effect, or
+ *         ANALOG_INPUT_ERR_UNSUPPORTED for input types without a check.
+ * @note Schedule the first check from the returned delay instead of waiting
+ *       inside the interface. The output is written only when the mode was
+ *       entered, and read_sample() and convert() must not be used while it is
+ *       active.
  */
 static inline analog_input_status_t analog_input_enable_break_detection(
     analog_input_t* self,
@@ -417,9 +396,14 @@ static inline analog_input_status_t analog_input_enable_break_detection(
 /**
  * @brief Return from the detection mode to the measurement mode.
  *
- * first_conversion_delay_ms receives the delay in milliseconds before
- * read_sample() produces a valid result again, so the caller can schedule the
- * next measurement event. The output is written only when the mode was left.
+ * @param self Analog input object.
+ * @param first_conversion_delay_ms Receives the delay in milliseconds before
+ *        read_sample() produces a valid result again.
+ * @return ANALOG_INPUT_OK, ANALOG_INPUT_ERR_ARG for a NULL pointer, or
+ *         ANALOG_INPUT_ERR_STATE when the object has no operation table.
+ * @note Restores the configuration that configure() last accepted. Schedule
+ *       the next measurement event from the returned delay; the output is
+ *       written only when the mode was left.
  */
 static inline analog_input_status_t analog_input_disable_break_detection(
     analog_input_t* self,
@@ -434,7 +418,18 @@ static inline analog_input_status_t analog_input_disable_break_detection(
     return self->ops->disable_break_detection(self, first_conversion_delay_ms);
 }
 
-/** Run one wire-break check and return its result immediately. */
+/**
+ * @brief Run one wire-break check and return its result immediately.
+ *
+ * @param self Analog input object.
+ * @param wire_status Receives the check result.
+ * @return ANALOG_INPUT_OK, ANALOG_INPUT_ERR_ARG for a NULL pointer, or
+ *         ANALOG_INPUT_ERR_STATE when the object has no operation table.
+ * @note Meaningful once the delay of analog_input_enable_break_detection() has
+ *       elapsed. The function reads the converter once and does not wait, and
+ *       an implementation that can tell the faults apart reports the specific
+ *       value instead of ANALOG_INPUT_WIRE_BROKEN.
+ */
 static inline analog_input_status_t analog_input_check_wire_break(
     analog_input_t* self,
     analog_input_wire_status_t* wire_status)
