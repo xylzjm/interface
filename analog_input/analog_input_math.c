@@ -157,8 +157,7 @@ static const float tc_k_2[] = {
 static const float tc_n_1[] = {
     0.0000000000e+00f, 2.6159105962e+01f, 1.0957484228e-02f,
     -9.3841111554e-05f, -4.6412039759e-08f, -2.6303357716e-09f,
-    -2.2653438003e-11f, -7.6089300791e-14f, -9.3419667835e-17f,
-    2.0849229339e-22f, -3.0682196151e-26f};
+    -2.2653438003e-11f, -7.6089300791e-14f, -9.3419667835e-17f};
 static const float tc_n_2[] = {
     0.0000000000e+00f, 2.5929394601e+01f, 1.5710141880e-02f,
     4.3825627237e-05f, -2.5261169794e-07f, 6.4311819339e-10f,
@@ -219,7 +218,7 @@ static const tc_range_t tc_k_ranges[] = {
     {tc_k_2, 0.0f, 1372.0f, 10U, 0U},
 };
 static const tc_range_t tc_n_ranges[] = {
-    {tc_n_1, -270.0f, 0.0f, 11U, TC_NO_EXP},
+    {tc_n_1, -270.0f, 0.0f, 9U, TC_NO_EXP},
     {tc_n_2, 0.0f, 1300.0f, 11U, TC_NO_EXP},
 };
 static const tc_range_t tc_r_ranges[] = {

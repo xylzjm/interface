@@ -22,7 +22,8 @@ an engineering value.
 analog_input/                this module's root
 ├── README.md                 this file
 ├── analog_input.h            public interface and inline application helpers
-└── analog_input_math.c       PT100 and thermocouple conversion math
+├── analog_input_math.c       PT100 and thermocouple conversion math
+└── test/                     host tests (test_analog_input_math.c)
 ```
 
 ## Implementing the interface
