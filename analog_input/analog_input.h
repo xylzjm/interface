@@ -76,6 +76,8 @@ typedef struct {
     float cold_junction; /**< Thermocouple cold-junction temperature. */
     float linear_min;    /**< Engineering value at the low input limit. */
     float linear_max;    /**< Engineering value at the high input limit. */
+    float gain;          /**< Per-channel calibration gain. */
+    float offset;        /**< Per-channel calibration offset. */
 } analog_input_conversion_context_t;
 
 /*----------------------------------------------------------------------------*/
